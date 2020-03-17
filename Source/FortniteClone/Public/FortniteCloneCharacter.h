@@ -203,6 +203,9 @@ public:
 	UPROPERTY(Replicated)
 	float InterpSpeed;
 
+	UPROPERTY(Replicated)
+	float accumulatedTime;
+
 	UPROPERTY(ReplicatedUsing=OnRepSetSkin)
 	bool SkinInitialized;
 
@@ -225,6 +228,8 @@ protected:
 
 	/** Resets HMD orientation in VR. */
 	void OnResetVR();
+
+	void FlyForward(float Value);
 
 	/** Called for forwards/backward input */
 	void MoveForward(float Value);
@@ -265,10 +270,6 @@ protected:
 
 	UFUNCTION()
 	void SwitchBuildingMaterial();
-
-	/* Set the animation variable as well as shoot a very small projectile from the gun or pickaxe*/
-	UFUNCTION()
-	void ShootGun();
 
 	/* Set the animation variable as well as shoot a very small projectile from the gun*/
 	UFUNCTION()
@@ -380,7 +381,6 @@ public:
 		return true;
 	}
 
-public:
 	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerSetIsWalkingTrue();
 
@@ -439,7 +439,10 @@ public:
 	void ServerSetBuildModeFloor();
 
 	UFUNCTION(Server, Reliable, WithValidation)
-	void ServerFireWeapon();
+	void ServerFireFullAutoWeapon(float currentAccumulateTime);
+
+	UFUNCTION(Server, Reliable, WithValidation)
+	void ServerFireSemiAutoWeapon();
 
 	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerUseHealingItem(int HealingItemType);

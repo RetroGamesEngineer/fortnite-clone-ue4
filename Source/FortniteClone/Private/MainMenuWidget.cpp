@@ -24,18 +24,19 @@ UMainMenuWidget::UMainMenuWidget(const FObjectInitializer& ObjectInitializer) :S
 	SucceededToJoinGame = false;
 	GameSessionsLeft = 4;
 
-	DescribeGameSessionQueuesEvent = FGenericPlatformProcess::GetSynchEventFromPool(false);
+	/*DescribeGameSessionQueuesEvent = FGenericPlatformProcess::GetSynchEventFromPool(false); //commented out to prevent gamelift stuff crashing for me
 	SearchGameSessionsEvent = FGenericPlatformProcess::GetSynchEventFromPool(false);
 	CreatePlayerSessionEvent = FGenericPlatformProcess::GetSynchEventFromPool(false);
 	StartGameSessionPlacementEvent = FGenericPlatformProcess::GetSynchEventFromPool(false);
 	DescribeGameSessionPlacementEvent = FGenericPlatformProcess::GetSynchEventFromPool(false);
+	*/
 }
 
 void UMainMenuWidget::NativeConstruct() {
 	Super::NativeConstruct();
 	// line below is for testing local gamelift
-	//Client = UGameLiftClientObject::CreateGameLiftObject(AccessKey, SecretKey, "us-east-2", true, 9080);
-	Client = UGameLiftClientObject::CreateGameLiftObject(AccessKey, SecretKey, "us-east-2");
+	//Client = UGameLiftClientObject::CreateGameLiftObject(AccessKey, SecretKey, "us-east-2", true, 9080); //commented out to prevent gamelift stuff crashing for me
+	//Client = UGameLiftClientObject::CreateGameLiftObject(AccessKey, SecretKey, "us-east-2");
 	
 	JoinGameButton = (UButton*) GetWidgetFromName(TEXT("Button_JoinGame"));
 	JoinGameButton->OnClicked.AddDynamic(this, &UMainMenuWidget::JoinGame);
@@ -57,6 +58,10 @@ void UMainMenuWidget::NativeConstruct() {
 	*/
 }
 void UMainMenuWidget::JoinGame() {
+
+	UGameplayStatics::OpenLevel(GetWorld(),FName("/Game/Maps/Level_BattleRoyale_2"),false); //added this for local testing without gamelift crashing my client...
+	return;
+
 	AttemptToJoinGameFinished = false;
 	JoinGameButton->SetIsEnabled(false);
 	DisableMouseEvents();

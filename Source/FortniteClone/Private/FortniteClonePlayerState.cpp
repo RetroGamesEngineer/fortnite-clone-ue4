@@ -24,13 +24,33 @@ AFortniteClonePlayerState::AFortniteClonePlayerState() {
 	CurrentHealingItem = -1;
 	HealingItemCounts.Add(0);
 	HealingItemCounts.Add(0);
+	adminFlyEnabled=false;
+	infiniteAmmoEnabled=true; //Enabling infinite ammo for all weapons boolean (better than commenting or uncommenting in a bunch of places to enable/disable)
 	JustShotRifle = false;
+	rifleFireRate=0.05f; //Tweak these to adjust firing rates as desired...
+	rifleLastFiredDelta=0.0f;
 	JustShotShotgun = false;
+	shotgunFireRate=0.7f; //Tweak these to adjust firing rates as desired...
 	JustSwungPickaxe = false;
+	pickaxeSwingRate=0.3f; //Tweak these to adjust firing rates as desired...
 	JustUsedHealingItem = false;
 	JustReloadedRifle = false;
 	JustReloadedShotgun = false;
 	KillCount = 0;
+
+	IConsoleVariable* AdminFlyCmd=IConsoleManager::Get().RegisterConsoleVariable(TEXT("AdminFly"),
+		2,
+		TEXT("AdminCommand: Run 'AdminFly 1' to enable admin fly mode, 0 to disable.\nMiddle Mouse Button to fly forward"),
+		ECVF_Scalability | ECVF_RenderThreadSafe);
+
+	AdminFlyCmd->AsVariable()->SetOnChangedCallback(FConsoleVariableDelegate::CreateLambda([&](IConsoleVariable* Var) { if(HasAuthority()) { adminFlyEnabled=Var->GetBool(); } }));
+
+	IConsoleVariable* SetInfiniteAmmoCmd=IConsoleManager::Get().RegisterConsoleVariable(TEXT("InfiniteAmmo"),
+		2,
+		TEXT("AdminCommand: Run 'InfiniteAmmo 1' to enable infinite ammo, 0 to disable .\n"),
+		ECVF_Scalability | ECVF_RenderThreadSafe);
+
+	SetInfiniteAmmoCmd->AsVariable()->SetOnChangedCallback(FConsoleVariableDelegate::CreateLambda([&](IConsoleVariable* Var) { if(HasAuthority()) { infiniteAmmoEnabled=Var->GetBool(); } }));
 }
 
 void AFortniteClonePlayerState::GetLifetimeReplicatedProps(TArray< FLifetimeProperty > & OutLifetimeProps) const
@@ -49,8 +69,12 @@ void AFortniteClonePlayerState::GetLifetimeReplicatedProps(TArray< FLifetimeProp
 	DOREPLIFETIME(AFortniteClonePlayerState, CurrentHealingItem);
 	DOREPLIFETIME(AFortniteClonePlayerState, HealingItemCounts);
 	DOREPLIFETIME(AFortniteClonePlayerState, JustShotRifle);
+	DOREPLIFETIME(AFortniteClonePlayerState, rifleLastFiredDelta);
+	DOREPLIFETIME(AFortniteClonePlayerState, rifleFireRate);
 	DOREPLIFETIME(AFortniteClonePlayerState, JustShotShotgun);
+	DOREPLIFETIME(AFortniteClonePlayerState, shotgunFireRate);
 	DOREPLIFETIME(AFortniteClonePlayerState, JustSwungPickaxe);
+	DOREPLIFETIME(AFortniteClonePlayerState, pickaxeSwingRate);
 	DOREPLIFETIME(AFortniteClonePlayerState, JustUsedHealingItem);
 	DOREPLIFETIME(AFortniteClonePlayerState, JustReloadedRifle);
 	DOREPLIFETIME(AFortniteClonePlayerState, JustReloadedShotgun);

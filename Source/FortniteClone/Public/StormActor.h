@@ -16,6 +16,7 @@ class FORTNITECLONE_API AStormActor : public AActor
 public:	
 	// Sets default values for this actor's properties
 	AStormActor();
+	void InitializeStorm();
 
 protected:
 	// Called when the game starts or when spawned
@@ -25,14 +26,59 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+	UPROPERTY()
+	FTimerHandle StormStateTimerHandle;
+	
+	UPROPERTY()
+	FTimerHandle StormDamageTimerHandle;
+
 	UPROPERTY(Replicated)
 	float Damage;
+
+	UPROPERTY(Replicated)
+	float StormAdvanceStageRate;
+
+	UPROPERTY(Replicated)
+	float StormIncreaseDamageRate;
 
 	UPROPERTY(Replicated)
 	bool IsShrinking;
 
 	UPROPERTY(Replicated)
-	FVector SizeScale;
+	FVector InitialSizeScale;
+	
+	UPROPERTY(Replicated)
+	FVector InitialActorLocation;
+
+	UPROPERTY(Replicated)
+	TArray<FVector> SizeScales;
+
+	UPROPERTY(Replicated)
+	int32 ScaleIndex;
+
+	UPROPERTY(Replicated)
+	int32 ScaleTotalCount;
+
+	UPROPERTY()
+	float ScaleDownRate;
+
+	UPROPERTY()
+	float ScaleHighThreshold;
+
+	UPROPERTY()
+	float ScaleMidThreshold;
+
+	UPROPERTY()
+	float ScaleLowThreshold;
+
+	UPROPERTY()
+	float ScaleHighModifier;
+
+	UPROPERTY()
+	float ScaleMidModifier;
+
+	UPROPERTY()
+	float ScaleLowModifier;
 
 	UPROPERTY()
 	int Stage;
@@ -43,7 +89,7 @@ public:
 	}
 
 	UFUNCTION(Server, Reliable, WithValidation)
-	void ServerSetIsShrinking();
+	void AdvanceStage();
 
 	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerSetNewDamage();

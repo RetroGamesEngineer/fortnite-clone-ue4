@@ -60,13 +60,31 @@ public:
 	int KillCount;
 
 	UPROPERTY(Replicated)
-	bool JustShotRifle; // used to prevent player from spamming rifle
+	bool adminFlyEnabled;
+
+	UPROPERTY(Replicated)
+	bool infiniteAmmoEnabled;
+
+	UPROPERTY(Replicated)
+	bool JustShotRifle; // used to prevent player from spamming shotgun
+
+	UPROPERTY(Replicated)
+	float rifleLastFiredDelta; //used to prevent player from spamming rifle
+
+	UPROPERTY(Replicated)
+	float rifleFireRate; // used to control full auto rifle fire rate
 
 	UPROPERTY(Replicated)
 	bool JustShotShotgun; // used to prevent player from spamming shotgun
 
 	UPROPERTY(Replicated)
+	float shotgunFireRate; // used to control shotgun fire rate
+
+	UPROPERTY(Replicated)
 	bool JustSwungPickaxe; //used to prevent player from spamming pickaxe
+
+	UPROPERTY(Replicated)
+	float pickaxeSwingRate; // used to control pickaxe swing rate
 
 	UPROPERTY(Replicated)
 	bool JustUsedHealingItem; //used to prevent player from spamming healing items and doing other things while reloading 

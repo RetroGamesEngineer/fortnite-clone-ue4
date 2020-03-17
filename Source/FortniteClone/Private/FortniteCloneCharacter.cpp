@@ -82,6 +82,7 @@ AFortniteCloneCharacter::AFortniteCloneCharacter()
 	AimPitch = 0.0;
 	AimYaw = 0.0;
 	InterpSpeed = 15.0; //change this to set aim sensitivity
+	accumulatedTime=0.0f;
 	WalkingX = 0;
 	WalkingY = 0;
 	RunningX = 0;
@@ -139,7 +140,7 @@ void AFortniteCloneCharacter::SetupPlayerInputComponent(class UInputComponent* P
 	PlayerInputComponent->BindAction("PreviewRamp", IE_Pressed, this, &AFortniteCloneCharacter::PreviewRamp);
 	PlayerInputComponent->BindAction("PreviewFloor", IE_Pressed, this, &AFortniteCloneCharacter::PreviewFloor);
 	PlayerInputComponent->BindAction("SwitchBuildingMaterial", IE_Pressed, this, &AFortniteCloneCharacter::SwitchBuildingMaterial);
-	PlayerInputComponent->BindAction("ShootGun", IE_Pressed, this, &AFortniteCloneCharacter::ShootGun);
+	PlayerInputComponent->BindAction("ShootGun", IE_Pressed, this, &AFortniteCloneCharacter::ServerFireSemiAutoWeapon); //Semi auto weapons call this binded function
 	PlayerInputComponent->BindAction("UseHealingItem", IE_Pressed, this, &AFortniteCloneCharacter::UseHealingItem);
 	PlayerInputComponent->BindAction("Reload", IE_Pressed, this, &AFortniteCloneCharacter::Reload);
 	PlayerInputComponent->BindAction("HoldPickaxe", IE_Pressed, this, &AFortniteCloneCharacter::HoldPickaxe);
@@ -286,6 +287,7 @@ void AFortniteCloneCharacter::GetLifetimeReplicatedProps(TArray< FLifetimeProper
 	DOREPLIFETIME(AFortniteCloneCharacter, AimPitch);
 	DOREPLIFETIME(AFortniteCloneCharacter, AimYaw);
 	DOREPLIFETIME(AFortniteCloneCharacter, InterpSpeed);
+	DOREPLIFETIME(AFortniteCloneCharacter, accumulatedTime);
 	DOREPLIFETIME(AFortniteCloneCharacter, InStorm);
 	DOREPLIFETIME(AFortniteCloneCharacter, SkinInitialized);
 	DOREPLIFETIME(AFortniteCloneCharacter, MaterialOrMaterialInstance);
@@ -302,6 +304,12 @@ void AFortniteCloneCharacter::Tick(float DeltaTime) {
 		if (GetController()) {
 			AFortniteClonePlayerState* State = Cast<AFortniteClonePlayerState>(GetController()->PlayerState);
 			if (State) {
+				
+				ServerFireFullAutoWeapon(accumulatedTime += DeltaTime); //Full auto weapons are handled in this function: currently only the rifle is full auto
+
+				if(((APlayerController*)GetController())->IsInputKeyDown(EKeys::MiddleMouseButton) && State->adminFlyEnabled)
+					FlyForward(25.0f);
+
 				if (BuildingPreview != nullptr) {
 					BuildingPreview->Destroy(); //destroy the last structure preview
 					BuildingPreview = nullptr;
@@ -448,7 +456,6 @@ void AFortniteCloneCharacter::Tick(float DeltaTime) {
 		AimPitch = NewPitch;
 		AimYaw = NewYaw;
 	}
-	
 }
 
 void AFortniteCloneCharacter::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult) {
@@ -553,7 +560,7 @@ void AFortniteCloneCharacter::OnOverlapBegin(UPrimitiveComponent* OverlappedComp
 				/*FString LogMsg = FString("storm overlap begin ") + FString::FromInt(GetNetMode());
 				GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, LogMsg);
 				UE_LOG(LogFortniteCloneCharacter, Warning, TEXT("%s"), *LogMsg);*/
-				InStorm = false;
+				InStorm = true;
 			}
 			//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, OtherActor->GetName());
 		}
@@ -570,7 +577,7 @@ void AFortniteCloneCharacter::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, 
 				return;
 			}
 			if (OtherActor->IsA(AStormActor::StaticClass())) {
-				InStorm = true;
+				InStorm = false;
 			}
 		}
 	}
@@ -612,6 +619,31 @@ void AFortniteCloneCharacter::LookUpAtRate(float Rate)
 {
 	// calculate delta for this frame from the rate information
 	AddControllerPitchInput(Rate * BaseLookUpRate * GetWorld()->GetDeltaSeconds());
+}
+
+float DegreesToRadians(float degrees)
+{
+	return degrees * (PI / 180.0f);
+}
+
+void AFortniteCloneCharacter::FlyForward(float Value)
+{
+	//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString("move forward ") + FString::FromInt(GetNetMode()));
+
+	if((Controller != nullptr) && (Value != 0.0f) && HasAuthority())
+	{
+		AFortniteClonePlayerState* State=Cast<AFortniteClonePlayerState>(Controller->PlayerState);
+		if(State)
+		{
+			FRotator Rotation=Controller->GetControlRotation();
+
+			float X=90.f;//(-sinf(DegreesToRadians(Rotation.Yaw)) * cosf(DegreesToRadians(Rotation.Pitch))) * Value;
+			float Y=0.f;//(cosf(DegreesToRadians(Rotation.Yaw)) * cosf(DegreesToRadians(Rotation.Pitch))) * Value;
+			float Z=(sinf(DegreesToRadians(Rotation.Pitch))) * Value * 7.0f;
+
+			AddActorLocalOffset(FVector(X,Y,Z),false,nullptr,ETeleportType::TeleportPhysics);
+		}
+	}
 }
 
 void AFortniteCloneCharacter::MoveForward(float Value)
@@ -1000,10 +1032,6 @@ void AFortniteCloneCharacter::BuildStructure(float Value) {
 
 void AFortniteCloneCharacter::SwitchBuildingMaterial() {
 	ServerChangeBuildingMaterial();
-}
-
-void AFortniteCloneCharacter::ShootGun() {
-	ServerFireWeapon();
 }
 
 void AFortniteCloneCharacter::UseHealingItem() {
@@ -1512,90 +1540,121 @@ bool AFortniteCloneCharacter::ServerSetBuildModeFloor_Validate() {
 	return true;
 }
 
-void AFortniteCloneCharacter::ServerFireWeapon_Implementation() {
-	if (CurrentWeapon != nullptr) {
-		if (GetController()) {
-			AFortniteClonePlayerState* State = Cast<AFortniteClonePlayerState>(GetController()->PlayerState);
-			if (State) {
+void AFortniteCloneCharacter::ServerFireFullAutoWeapon_Implementation(float currentAccumulatedTime)
+{
+	if(CurrentWeapon != nullptr)
+	{
+		APlayerController* LocalController=Cast<APlayerController>(GetController());
+		AFortniteClonePlayerState* State=Cast<AFortniteClonePlayerState>(LocalController->PlayerState);
+		if(LocalController != nullptr && State != nullptr)
+		{
+			if(FMath::IsNearlyEqual(State->rifleLastFiredDelta,0.0f)) //When first initialized allow immediately able to fire
+				State->rifleLastFiredDelta=currentAccumulatedTime - State->rifleFireRate;
+
+			//Now using delta time accumulation to determine if rifle is able to shoot again rather than a timer 
+			if(currentAccumulatedTime >= (State->rifleLastFiredDelta + State->rifleFireRate))
+				State->JustShotRifle=false;
+
+			if(LocalController->IsInputKeyDown(EKeys::LeftMouseButton))
+			{
 				//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::FromInt(GetNetMode()) + FString(" Current weapon ") + FString::FromInt(State->CurrentWeapon));
-				if (State->HoldingWeapon) {
-					if (State->CurrentWeapon > 0 && State->CurrentWeapon < 3 && CurrentWeapon->CurrentBulletCount <= 0) {
+				if(State->HoldingWeapon && State->CurrentWeapon==1)
+				{
+					if(CurrentWeapon->CurrentBulletCount <= 0)
+					{
 						// no bullets in magazine, need to reload
 						ServerReloadWeapons();
 						return;
 					}
-					if (State->JustReloadedRifle || State->JustReloadedShotgun) {
+					else if(State->JustReloadedRifle)
 						return; //currently reloading
-					}
-					if (State->AimedIn) {
-						if (State->CurrentWeapon == 1) {
-							if (State->JustShotRifle) {
-								return;
-							}
-							NetMulticastPlayShootRifleIronsightsAnimation();
-							CurrentWeapon->CurrentBulletCount--;
-							State->EquippedWeaponsClips[CurrentWeaponType]--;
-							State->JustShotRifle = true;
-							FTimerHandle RifleTimerHandle;
-							GetWorldTimerManager().SetTimer(RifleTimerHandle, this, &AFortniteCloneCharacter::ServerRifleTimeOut, 0.233f, false);
-						}
-						else if (State->CurrentWeapon == 2) {
-							if (State->JustShotShotgun) {
-								return;
-							}
-							NetMulticastPlayShootShotgunIronsightsAnimation();
-							CurrentWeapon->CurrentBulletCount--;
-							State->EquippedWeaponsClips[CurrentWeaponType]--;
-							State->JustShotShotgun = true;
-							FTimerHandle ShotgunTimerHandle;
-							GetWorldTimerManager().SetTimer(ShotgunTimerHandle, this, &AFortniteCloneCharacter::ServerShotgunTimeOut, 1.3f, false);
-						}
-					}
-					else {
-						if (State->CurrentWeapon == 0) {
-							//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, "pickaxe swung");
-							if (State->JustSwungPickaxe) {
-								return;
-							}
-							NetMulticastPlayPickaxeSwingAnimation();
-							State->JustSwungPickaxe = true;
-							FTimerHandle PickaxeTimerHandle;
-							GetWorldTimerManager().SetTimer(PickaxeTimerHandle, this, &AFortniteCloneCharacter::ServerPickaxeTimeOut, 0.403f, false);
-						}
-						if (State->CurrentWeapon == 1) {
-							if (State->JustShotRifle) {
-								return;
-							}
-							NetMulticastPlayShootRifleAnimation();
-							CurrentWeapon->CurrentBulletCount--;
-							State->EquippedWeaponsClips[CurrentWeaponType]--;
-							State->JustShotRifle = true;
-							FTimerHandle RifleTimerHandle;
-							GetWorldTimerManager().SetTimer(RifleTimerHandle, this, &AFortniteCloneCharacter::ServerRifleTimeOut, 0.233f, false);
-						}
-						else if (State->CurrentWeapon == 2) {
-							if (State->JustShotShotgun) {
-								return;
-							}
-							NetMulticastPlayShootShotgunAnimation();
-							CurrentWeapon->CurrentBulletCount--;
-							State->EquippedWeaponsClips[CurrentWeaponType]--;
-							State->JustShotShotgun = true;
-							FTimerHandle ShotgunTimerHandle;
-							GetWorldTimerManager().SetTimer(ShotgunTimerHandle, this, &AFortniteCloneCharacter::ServerShotgunTimeOut, 1.3f, false);
-						}
+					else if(State->JustShotRifle)
+						return;
 
+					if(State->AimedIn)
+						NetMulticastPlayShootRifleIronsightsAnimation();
+					else
+						NetMulticastPlayShootRifleAnimation();
+
+					if(!State->infiniteAmmoEnabled)
+					{
+						CurrentWeapon->CurrentBulletCount--;
+						State->EquippedWeaponsClips[CurrentWeaponType]--;
 					}
+					State->rifleLastFiredDelta=currentAccumulatedTime;
+					State->JustShotRifle=true;
+
+					//No need for timer for the rifle since we're handling it using a delta time rather than using a timer
+					//FTimerHandle RifleTimerHandle;
+					//GetWorldTimerManager().SetTimer(RifleTimerHandle,this,&AFortniteCloneCharacter::ServerRifleTimeOut,State->rifleFireRate,false);
+
 					ClientGetBulletTransform();
-
-
 				}
 			}
 		}
 	}
 }
 
-bool AFortniteCloneCharacter::ServerFireWeapon_Validate() {
+bool AFortniteCloneCharacter::ServerFireFullAutoWeapon_Validate(float currentDeltaTime)
+{
+	return true;
+}
+
+void AFortniteCloneCharacter::ServerFireSemiAutoWeapon_Implementation() {
+	if (CurrentWeapon != nullptr) {
+		if (GetController()) {
+			AFortniteClonePlayerState* State = Cast<AFortniteClonePlayerState>(GetController()->PlayerState);
+			if (State) {
+				//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::FromInt(GetNetMode()) + FString(" Current weapon ") + FString::FromInt(State->CurrentWeapon));
+				if (State->HoldingWeapon && State->CurrentWeapon != 1) { //Exlcuding rifle now since it's been made full auto
+					if (State->CurrentWeapon > 0 && State->CurrentWeapon < 3 && CurrentWeapon->CurrentBulletCount <= 0) {
+						// no bullets in magazine, need to reload
+						ServerReloadWeapons();
+						return;
+					}
+					if (State->JustReloadedShotgun) {
+						return; //currently reloading
+					}
+					if(State->CurrentWeapon == 0)
+					{
+						//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, "pickaxe swung");
+						if(State->JustSwungPickaxe)
+						{
+							return;
+						}
+						NetMulticastPlayPickaxeSwingAnimation();
+						State->JustSwungPickaxe=true;
+						FTimerHandle PickaxeTimerHandle;
+						GetWorldTimerManager().SetTimer(PickaxeTimerHandle,this,&AFortniteCloneCharacter::ServerPickaxeTimeOut,State->pickaxeSwingRate,false);
+					}
+					else if(State->CurrentWeapon == 2)
+					{
+						if(State->JustShotShotgun)
+						{
+							return;
+						}
+						if(State->AimedIn)
+							NetMulticastPlayShootShotgunIronsightsAnimation();
+						else
+							NetMulticastPlayShootShotgunAnimation();
+
+						if(!State->infiniteAmmoEnabled)
+						{
+							CurrentWeapon->CurrentBulletCount--;
+							State->EquippedWeaponsClips[CurrentWeaponType]--;
+						}
+						State->JustShotShotgun=true;
+						FTimerHandle ShotgunTimerHandle;
+						GetWorldTimerManager().SetTimer(ShotgunTimerHandle,this,&AFortniteCloneCharacter::ServerShotgunTimeOut,State->shotgunFireRate,false);
+					}
+					ClientGetBulletTransform();
+				}
+			}
+		}
+	}
+}
+
+bool AFortniteCloneCharacter::ServerFireSemiAutoWeapon_Validate() {
 	return true;
 }
 
@@ -2071,7 +2130,7 @@ bool AFortniteCloneCharacter::ServerHealingItemTimeOut_Validate(int HealingItemT
 }
 
 void AFortniteCloneCharacter::ServerApplyStormDamage_Implementation() {
-	if (CurrentStorm != nullptr && InStorm) {
+	if (CurrentStorm != nullptr && !InStorm) { //fixed storm damage to only damage player when NOT in the storm (!InStorm)
 		//get storm actor and get its damage component and apply the damage to the player's health
 		Health -= CurrentStorm->Damage;
 		if (Health <= 0) {

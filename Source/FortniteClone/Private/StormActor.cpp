@@ -15,24 +15,60 @@ AStormActor::AStormActor()
 	StormAdvanceStageRate=30.f; //Default every 30 seconds
 	StormIncreaseDamageRate=120.f; //Default every 120 seconds
 	IsShrinking=false;
-	InitialSizeScale=GetActorScale3D();
+	InitialSizeScale=GetActorScale3D(); 
 	InitialActorLocation=GetActorLocation();
+	//Setting z scale and location of storm seems to improve performance much more noticably than precalculating shrink vectors
+	InitialSizeScale.Z=-0.03f; //Scale.Z=0.04f Location.Z=33100.f good values or (okay values -0.02f and 45990.f: with inverted cylinder for bright bottom and dim top instead of vice versa)
+	InitialActorLocation.Z=54000.f; //Best so far: -0.03f z scale, 50000.f z location (an okay hotfix for now until the real issue is figured out and solved)
 	ScaleDownRate=0.999485f;
-	ScaleHighThreshold=1.0f;
+	InverseScaleDownRate=0.000515f;
+	ScaleHighThreshold=1.f;
 	ScaleMidThreshold=0.7f;
 	ScaleLowThreshold=0.4f;
 	ScaleHighModifier=0.000110f;
 	ScaleMidModifier=0.000320f;
 	ScaleLowModifier=0.000100f;
-	Stage = 0; //Stages 0, 1, 2, 3, the circle is not shrinking, stage 4, 5, 6 the circle is shrinking and sets back to 0 afterwards
+	Stage = 0; //Every odd stage it shrinks, even stages player's get a break from it...
 	FMath::SRandInit(FPlatformTime::Cycles());
 
-	IConsoleVariable *RestartStormCmd=IConsoleManager::Get().RegisterConsoleVariable(TEXT("RestartStorm"),
+	IConsoleVariable *StormRestartCmd=IConsoleManager::Get().RegisterConsoleVariable(TEXT("StormRestart"),
 		2,
-		TEXT("AdminCommand: Run 'RestartStorm 1' to restart the storm on demand.\n"),
+		TEXT("AdminCommand: Run 'StormRestart 1' to restart the storm on demand.\n"),
 		ECVF_Scalability | ECVF_RenderThreadSafe);
 
-	RestartStormCmd->AsVariable()->SetOnChangedCallback(FConsoleVariableDelegate::CreateLambda([&] (IConsoleVariable* Var){ InitializeStorm(); }));
+	StormRestartCmd->AsVariable()->SetOnChangedCallback(FConsoleVariableDelegate::CreateLambda([&] (IConsoleVariable* Var){ InitializeStorm(); }));
+
+	IConsoleVariable* zStormScale=IConsoleManager::Get().RegisterConsoleVariable(TEXT("z.StormScale"),
+		2,
+		TEXT("AdminCommand: 'z.StormScale (float value)' to live edit storm z scale\n"),
+		ECVF_Scalability | ECVF_RenderThreadSafe);
+
+	zStormScale->AsVariable()->SetOnChangedCallback(FConsoleVariableDelegate::CreateLambda([&](IConsoleVariable* Var){ 
+		InitialSizeScale.Z=SizeScale.Z=FCString::Atof(*Var->GetString());
+		FString LogMsg=FString::Printf(_T("SizeScale.Z=%.08f"),SizeScale.Z);
+		GEngine->AddOnScreenDebugMessage(4,5.0f,FColor::Yellow,LogMsg);
+	}));
+
+	IConsoleVariable* zStormScale2=IConsoleManager::Get().RegisterConsoleVariable(TEXT("z.StormScaleAfterDecimal"),
+		2,
+		TEXT("AdminCommand: 'z.StormScaleAfterDecimal (float value)' to live edit storm z scale\n"),
+		ECVF_Scalability | ECVF_RenderThreadSafe);
+
+	zStormScale2->AsVariable()->SetOnChangedCallback(FConsoleVariableDelegate::CreateLambda([&](IConsoleVariable* Var){
+		SizeScale.Z=InitialSizeScale.Z+(FCString::Atof(*Var->GetString()) / 100.f);
+		FString LogMsg=FString::Printf(_T("SizeScale.Z after decimal=%.08f"),SizeScale.Z);
+		GEngine->AddOnScreenDebugMessage(4,5.0f,FColor::Yellow,LogMsg);
+	}));
+
+	IConsoleVariable* zStormLocation=IConsoleManager::Get().RegisterConsoleVariable(TEXT("z.StormLocation"),
+		2,
+		TEXT("AdminCommand: 'z.StormLocation (float value)' to live edit storm z location\n"),
+		ECVF_Scalability | ECVF_RenderThreadSafe);
+	
+	zStormLocation->AsVariable()->SetOnChangedCallback(FConsoleVariableDelegate::CreateLambda([&](IConsoleVariable* Var){ 
+		InitialActorLocation.Z=Var->GetFloat();
+		SetActorLocation(InitialActorLocation);
+	}));
 }
 
 void AStormActor::InitializeStorm()
@@ -45,10 +81,12 @@ void AStormActor::InitializeStorm()
 		//move the storm to a random location on the map
 		int32 X=FMath::RandRange(-7000 + 10000,60000 - 10000);
 		int32 Y=FMath::RandRange(-60000 + 10000,17000 - 10000);
-		SetActorLocation(FVector(X,Y,GetActorLocation().Z));
+		SetActorLocation(FVector(X,Y,InitialActorLocation.Z));
 
+		SizeScale=InitialSizeScale;
 		SetActorScale3D(InitialSizeScale);
-		FVector ScaleDown=InitialSizeScale;
+
+		/*
 		ScaleTotalCount=131072; //(131072 * 12) == (1024 * 1024 * 1.5) We'll go up to 1.5MB worth of scale downs but it's more than enough and we'll stop early anyway...
 		ScaleIndex=0;
 		SizeScales.Reset();
@@ -74,6 +112,10 @@ void AStormActor::InitializeStorm()
 				break;
 			}
 		}
+		*/
+
+		GetWorldTimerManager().SetTimer(StormSetupTimerHandle,this,&AStormActor::AdvanceStage,StormAdvanceStageRate,true);
+		GetWorldTimerManager().SetTimer(StormDamageTimerHandle,this,&AStormActor::ServerSetNewDamage,StormIncreaseDamageRate,true);
 	}
 }
 
@@ -82,11 +124,6 @@ void AStormActor::BeginPlay()
 {
 	Super::BeginPlay();
 	InitializeStorm();
-	if(HasAuthority())
-	{
-		FTimerHandle StormSetupTimerHandle;
-		GetWorldTimerManager().SetTimer(StormSetupTimerHandle,this,&AStormActor::ServerStartStorm,StormAdvanceStageRate,true);
-	}
 
 	/*FString LogMsg = FString("storm actor constructor ") + FString::FromInt(X) + FString(" ") + FString::FromInt(Y);
 	UE_LOG(LogMyGame, Warning, TEXT("%s"), *LogMsg);*/
@@ -107,15 +144,38 @@ void AStormActor::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 	if(HasAuthority() && IsShrinking)
 	{
-		if(++ScaleIndex < ScaleTotalCount)
+		//Using precalculated vectors doesn't really seem to help much if at all, I believe the problem mostly lies with the storm asset itself and should likely be simplified in the editor...
+		/*if(++ScaleIndex < ScaleTotalCount)
 		{
 			SetActorScale3D(SizeScales[ScaleIndex]);
 			FString LogMsg=FString::Printf(_T("Using Pre-calculated: SizeScale.X=%.08f SizeScale.Y=%.08f ScaleIndex=%i ScaleTotalCount=%i Stage=%i"),SizeScales[ScaleIndex].X,SizeScales[ScaleIndex].Y,ScaleIndex,ScaleTotalCount,Stage);
 			GEngine->AddOnScreenDebugMessage(1,5.f,FColor::Green,LogMsg);
+		}*/
+
+		//So it doesn't seem like there's much we can do here since it seems like calculating here really isn't that expensive not enough to be the actual issue anyway, so
+		//how about incorporating the delta into here so that at least it shrinks in a controlled and predictible way regardless of framerate...
+		if(SizeScale.X > 0.0000009f)
+		{
+			float newScaleXY=(SizeScale.X - (ScaleDownRate * DeltaTime * 0.009f));
+			SizeScale=FVector(newScaleXY,newScaleXY,SizeScale.Z);
+			SetActorScale3D(SizeScale);
+
+			FString LogMsg=FString::Printf(_T("Using DeltaTime incorporated scaling: Stage=%i SizeScale.XY=%0.8f"),Stage,SizeScale.X);
+			GEngine->AddOnScreenDebugMessage(1,5.f,FColor::Yellow,LogMsg);
 		}
 
-		/*FVector SizeScale=FVector(SizeScale.X * 0.999485,SizeScale.Y * 0.999485,SizeScale.Z);
-		SetActorScale3D(SizeScale);*/
+		float timeElapsed1=GetWorldTimerManager().GetTimerElapsed(StormSetupTimerHandle);
+		float timeRemaining1=GetWorldTimerManager().GetTimerRemaining(StormSetupTimerHandle);
+		FString timeMsg1=FString::Printf(_T("Storm Stage Advance, timer elapsed (seconds): %.02f, time remaining until next stage (seconds): %.02f"),timeElapsed1,timeRemaining1);
+		GEngine->AddOnScreenDebugMessage(2,5.f,FColor::Green,timeMsg1);
+
+		if(StormDamageTimerHandle.IsValid())
+		{
+			float timeElapsed2=GetWorldTimerManager().GetTimerElapsed(StormDamageTimerHandle);
+			float timeRemaining2=GetWorldTimerManager().GetTimerRemaining(StormDamageTimerHandle);
+			FString timeMsg2=FString::Printf(_T("Storm Damage Increase, timer elapsed (seconds): %.02f, time remaining until damage increased (seconds): %.02f"),timeElapsed2,timeRemaining2);
+			GEngine->AddOnScreenDebugMessage(3,5.f,FColor::Green,timeMsg2);
+		}
 	}
 }
 
@@ -135,16 +195,13 @@ void AStormActor::AdvanceStage_Implementation()
 {		
 	//Advance stages until storm is down to almost nothing (no longer visible) or ScaleIndex is outside of precalculated shrinkdowns,
 	//Usually by this point either the game has probably ended or we reinitalize the storm and start again...
-	if(GetActorScale3D().X <= 0.0000009f && GetActorScale3D().Y <= 0.0000009f || ScaleIndex >= ScaleTotalCount)
+	if(GetActorScale3D().X <= 0.0000009f && GetActorScale3D().Y <= 0.0000009f) //|| ScaleIndex >= ScaleTotalCount)
 		return InitializeStorm();
 	//If 1/10th the scale make this the last stage and keep shrinking until there's a winner / end of game, or the storm re-initializes due to being extremely tiny as above
 	if(GetActorScale3D().X <= 0.1f && GetActorScale3D().Y <= 0.1f)
 		return;
 
-	if((++Stage % 2) != 0) //Every odd numbered stage advance the shrinking!
-		IsShrinking=true;
-	else
-		IsShrinking=false;
+	IsShrinking=((++Stage % 2) != 0) ?  true : false; //Every odd numbered stage advance the shrinking!
 }
 
 bool AStormActor::AdvanceStage_Validate() {
@@ -159,12 +216,12 @@ bool AStormActor::ServerSetNewDamage_Validate() {
 	return true;
 }
 
-void AStormActor::ServerStartStorm_Implementation() {
-	
-	GetWorldTimerManager().SetTimer(StormStateTimerHandle,this,&AStormActor::AdvanceStage,0.001f,false);
-	GetWorldTimerManager().SetTimer(StormDamageTimerHandle,this,&AStormActor::ServerSetNewDamage,StormIncreaseDamageRate+0.001f,false);
+void AStormActor::ServerStartStorm_Implementation()
+{
+	InitializeStorm();
 }
 
-bool AStormActor::ServerStartStorm_Validate() {
+bool AStormActor::ServerStartStorm_Validate()
+{
 	return true;
 }

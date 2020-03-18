@@ -24,7 +24,7 @@ AFortniteClonePlayerState::AFortniteClonePlayerState() {
 	CurrentHealingItem = -1;
 	HealingItemCounts.Add(0);
 	HealingItemCounts.Add(0);
-	adminFlyEnabled=false;
+	adminFlyEnabled=true;
 	infiniteAmmoEnabled=true; //Enabling infinite ammo for all weapons boolean (better than commenting or uncommenting in a bunch of places to enable/disable)
 	JustShotRifle = false;
 	rifleFireRate=0.05f; //Tweak these to adjust firing rates as desired...

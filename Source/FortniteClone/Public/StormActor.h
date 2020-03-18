@@ -27,6 +27,9 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	UPROPERTY()
+	FTimerHandle StormSetupTimerHandle;
+
+	UPROPERTY()
 	FTimerHandle StormStateTimerHandle;
 	
 	UPROPERTY()
@@ -51,6 +54,9 @@ public:
 	FVector InitialActorLocation;
 
 	UPROPERTY(Replicated)
+	FVector SizeScale;
+
+	UPROPERTY(Replicated)
 	TArray<FVector> SizeScales;
 
 	UPROPERTY(Replicated)
@@ -61,6 +67,9 @@ public:
 
 	UPROPERTY()
 	float ScaleDownRate;
+
+	UPROPERTY()
+	float InverseScaleDownRate;
 
 	UPROPERTY()
 	float ScaleHighThreshold;
@@ -94,7 +103,7 @@ public:
 	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerSetNewDamage();
 
-	UFUNCTION(Server, Reliable, WithValidation)
+	UFUNCTION(Server,Reliable,WithValidation)
 	void ServerStartStorm();
 
 };

@@ -166,6 +166,9 @@ public:
 	UPROPERTY(Replicated)
 	ABuildingActor* BuildingPreview;
 
+	UPROPERTY()
+	float HotkeyDelayedUntil;
+
 	/* Anim instance properties */
 	UPROPERTY(Replicated)
 	bool IsRunning;
@@ -229,7 +232,7 @@ protected:
 	/** Resets HMD orientation in VR. */
 	void OnResetVR();
 
-	void FlyForward(float Value);
+	void FlyForward(float Value,float DeltaTime);
 
 	/** Called for forwards/backward input */
 	void MoveForward(float Value);
@@ -439,7 +442,7 @@ public:
 	void ServerSetBuildModeFloor();
 
 	UFUNCTION(Server, Reliable, WithValidation)
-	void ServerFireFullAutoWeapon(float currentAccumulateTime);
+	void ServerFireFullAutoWeapon(float currentAccumulatedTime);
 
 	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerFireSemiAutoWeapon();

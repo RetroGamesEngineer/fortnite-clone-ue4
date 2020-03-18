@@ -73,6 +73,7 @@ AFortniteCloneCharacter::AFortniteCloneCharacter()
 	CurrentBuildingMaterial = 0;
 	BuildingPreview = nullptr;
 
+	HotkeyDelayedUntil=0.f;
 	// Animinstance properties
 	IsWalking = false;
 	IsRunning = false;
@@ -301,14 +302,46 @@ void AFortniteCloneCharacter::Tick(float DeltaTime) {
 	//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString("Tick mode ") + FString::SanitizeFloat(DirectionVector.Z));
 	if (HasAuthority()) {
 		// TODO: building preview should only be spawned client side
-		if (GetController()) {
+		APlayerController* controller=(APlayerController*)GetController();
+		if (controller) {
 			AFortniteClonePlayerState* State = Cast<AFortniteClonePlayerState>(GetController()->PlayerState);
 			if (State) {
 				
 				ServerFireFullAutoWeapon(accumulatedTime += DeltaTime); //Full auto weapons are handled in this function: currently only the rifle is full auto
 
-				if(((APlayerController*)GetController())->IsInputKeyDown(EKeys::MiddleMouseButton) && State->adminFlyEnabled)
-					FlyForward(25.0f);
+				if(controller->IsInputKeyDown(EKeys::LeftControl) && controller->IsInputKeyDown(EKeys::LeftAlt) && controller->IsInputKeyDown(EKeys::A)
+					&& (accumulatedTime >= HotkeyDelayedUntil || FMath::IsNearlyEqual(HotkeyDelayedUntil,0.f)))
+				{
+					IConsoleVariable* ammo=IConsoleManager::Get().FindConsoleVariable(_T("InfiniteAmmo"));
+					if(ammo)
+					{
+						ammo->Set(!ammo->GetBool());
+						HotkeyDelayedUntil=accumulatedTime + 0.2f;
+					}
+				}
+				else if(controller->IsInputKeyDown(EKeys::LeftControl) && controller->IsInputKeyDown(EKeys::LeftAlt) && controller->IsInputKeyDown(EKeys::S)
+					&& (accumulatedTime >= HotkeyDelayedUntil || FMath::IsNearlyEqual(HotkeyDelayedUntil,0.f)))
+				{
+					IConsoleVariable* storm=IConsoleManager::Get().FindConsoleVariable(_T("StormRestart"));
+					if(storm)
+					{
+						storm->Set(true);
+						HotkeyDelayedUntil=accumulatedTime + 0.2f;
+					}
+				}
+				else if(controller->IsInputKeyDown(EKeys::LeftControl) && controller->IsInputKeyDown(EKeys::LeftAlt) && controller->IsInputKeyDown(EKeys::D)
+					&& (accumulatedTime >= HotkeyDelayedUntil || FMath::IsNearlyEqual(HotkeyDelayedUntil,0.f)))
+				{
+					IConsoleVariable* fly=IConsoleManager::Get().FindConsoleVariable(_T("AdminFly"));
+					if(fly)
+					{
+						fly->Set(!fly->GetBool());
+						HotkeyDelayedUntil=accumulatedTime + 0.2f;
+					}
+				}
+
+				if(controller->IsInputKeyDown(EKeys::MiddleMouseButton) && State->adminFlyEnabled)
+					FlyForward(10000.0f, DeltaTime);
 
 				if (BuildingPreview != nullptr) {
 					BuildingPreview->Destroy(); //destroy the last structure preview
@@ -470,7 +503,15 @@ void AFortniteCloneCharacter::OnOverlapBegin(UPrimitiveComponent* OverlappedComp
 				// if the character is overlapping with its healing item, dont do anything about it
 				return;
 			}
-			if (OtherActor->IsA(AWeaponActor::StaticClass())) {
+			if(OtherActor->IsA(AStormActor::StaticClass()))
+			{
+				/*FString LogMsg = FString("storm overlap begin ") + FString::FromInt(GetNetMode());
+				GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, LogMsg);
+				UE_LOG(LogFortniteCloneCharacter, Warning, TEXT("%s"), *LogMsg);*/
+				InStorm=true;
+				return;
+			}
+			else if (OtherActor->IsA(AWeaponActor::StaticClass())) {
 				AWeaponActor* WeaponActor = Cast<AWeaponActor>(OtherActor);
 				if (WeaponActor->WeaponType == 0) {
 					return; // do nothing if it's a pickaxe
@@ -556,12 +597,6 @@ void AFortniteCloneCharacter::OnOverlapBegin(UPrimitiveComponent* OverlappedComp
 					Ammo->Destroy();
 				}
 			}
-			else if (OtherActor->IsA(AStormActor::StaticClass())) {
-				/*FString LogMsg = FString("storm overlap begin ") + FString::FromInt(GetNetMode());
-				GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, LogMsg);
-				UE_LOG(LogFortniteCloneCharacter, Warning, TEXT("%s"), *LogMsg);*/
-				InStorm = true;
-			}
 			//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, OtherActor->GetName());
 		}
 	}
@@ -626,22 +661,22 @@ float DegreesToRadians(float degrees)
 	return degrees * (PI / 180.0f);
 }
 
-void AFortniteCloneCharacter::FlyForward(float Value)
+void AFortniteCloneCharacter::FlyForward(float Value, float DeltaTime)
 {
 	//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString("move forward ") + FString::FromInt(GetNetMode()));
 
-	if((Controller != nullptr) && (Value != 0.0f) && HasAuthority())
+	if((Controller != nullptr) && (Value != 0.0f))
 	{
 		AFortniteClonePlayerState* State=Cast<AFortniteClonePlayerState>(Controller->PlayerState);
 		if(State)
 		{
 			FRotator Rotation=Controller->GetControlRotation();
 
-			float X=90.f;//(-sinf(DegreesToRadians(Rotation.Yaw)) * cosf(DegreesToRadians(Rotation.Pitch))) * Value;
+			//float X=(-sinf(DegreesToRadians(Rotation.Yaw)) * cosf(DegreesToRadians(Rotation.Pitch))) * Value;
 			float Y=0.f;//(cosf(DegreesToRadians(Rotation.Yaw)) * cosf(DegreesToRadians(Rotation.Pitch))) * Value;
-			float Z=(sinf(DegreesToRadians(Rotation.Pitch))) * Value * 7.0f;
+			float Z=(sinf(DegreesToRadians(Rotation.Pitch))) * Value * DeltaTime * 2.f;
 
-			AddActorLocalOffset(FVector(X,Y,Z),false,nullptr,ETeleportType::TeleportPhysics);
+			AddActorLocalOffset(FVector(Value * DeltaTime,Y,Z),false,nullptr,ETeleportType::TeleportPhysics);
 		}
 	}
 }

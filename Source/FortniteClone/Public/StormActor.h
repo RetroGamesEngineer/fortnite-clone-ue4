@@ -6,8 +6,6 @@
 #include "GameFramework/Actor.h"
 #include "StormActor.generated.h"
 
-
-
 UCLASS()
 class FORTNITECLONE_API AStormActor : public AActor
 {
@@ -28,9 +26,6 @@ public:
 
 	UPROPERTY()
 	FTimerHandle StormSetupTimerHandle;
-
-	UPROPERTY()
-	FTimerHandle StormStateTimerHandle;
 	
 	UPROPERTY()
 	FTimerHandle StormDamageTimerHandle;
@@ -55,15 +50,6 @@ public:
 
 	UPROPERTY(Replicated)
 	FVector SizeScale;
-
-	UPROPERTY(Replicated)
-	TArray<FVector> SizeScales;
-
-	UPROPERTY(Replicated)
-	int32 ScaleIndex;
-
-	UPROPERTY(Replicated)
-	int32 ScaleTotalCount;
 
 	UPROPERTY()
 	float ScaleDownRate;

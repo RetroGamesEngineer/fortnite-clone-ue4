@@ -496,22 +496,15 @@ void AFortniteCloneCharacter::OnOverlapBegin(UPrimitiveComponent* OverlappedComp
 		//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString("NetMode: ") + FString::FromInt(GetNetMode()) + FString(" Player overlapped with: ") + OtherActor->GetName());
 		if (OtherActor != nullptr && OtherActor != this) {
 			if (CurrentWeapon != nullptr && OtherActor == (AActor*)CurrentWeapon) {
-				// if the character is overlapping with its weapon, dont do anything about it
+				// if the character is overlapping with its weapon, don't do anything about it
 				return;
 			}
 			if (CurrentHealingItem != nullptr && OtherActor == (AActor*)CurrentHealingItem) {
 				// if the character is overlapping with its healing item, dont do anything about it
 				return;
 			}
-			if(OtherActor->IsA(AStormActor::StaticClass()))
-			{
-				/*FString LogMsg = FString("storm overlap begin ") + FString::FromInt(GetNetMode());
-				GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, LogMsg);
-				UE_LOG(LogFortniteCloneCharacter, Warning, TEXT("%s"), *LogMsg);*/
-				InStorm=true;
-				return;
-			}
-			else if (OtherActor->IsA(AWeaponActor::StaticClass())) {
+			
+			if (OtherActor->IsA(AWeaponActor::StaticClass())) {
 				AWeaponActor* WeaponActor = Cast<AWeaponActor>(OtherActor);
 				if (WeaponActor->WeaponType == 0) {
 					return; // do nothing if it's a pickaxe
@@ -526,8 +519,11 @@ void AFortniteCloneCharacter::OnOverlapBegin(UPrimitiveComponent* OverlappedComp
 						if (State->InBuildMode || State->JustShotRifle || State->JustShotShotgun || State->JustSwungPickaxe || State->JustUsedHealingItem || State->JustReloadedRifle || State->JustReloadedShotgun) {
 							return; // can't pick up items while in build mode or if just shot rifle, shot shotgun, swung pickaxe, used healing item, or reloaded
 						}
-						// if the player already has a weapon of this type, do not equip it
+						//If the character is overlapping with another of it's current weapon, take the ammo from it...
 						if (State->EquippedWeapons.Contains(WeaponActor->WeaponType)) {
+							State->EquippedWeaponsAmmunition[WeaponActor->WeaponType]+=WeaponActor->MagazineSize;
+							//State->EquippedWeaponsClips[WeaponActor->WeaponType]+=WeaponActor->MagazineSize;
+							WeaponActor->Destroy();
 							return;
 						}
 						// Destroy old weapon/healing item
@@ -596,6 +592,13 @@ void AFortniteCloneCharacter::OnOverlapBegin(UPrimitiveComponent* OverlappedComp
 					}
 					Ammo->Destroy();
 				}
+			}
+			else if(OtherActor->IsA(AStormActor::StaticClass()))
+			{
+				/*FString LogMsg = FString("storm overlap begin ") + FString::FromInt(GetNetMode());
+				GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, LogMsg);
+				UE_LOG(LogFortniteCloneCharacter, Warning, TEXT("%s"), *LogMsg);*/
+				InStorm=true;
 			}
 			//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, OtherActor->GetName());
 		}

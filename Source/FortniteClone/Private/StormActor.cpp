@@ -17,16 +17,27 @@ AStormActor::AStormActor()
 	IsShrinking=false;
 	InitialSizeScale=GetActorScale3D();
 	InitialActorLocation=GetActorLocation();
-	ScaleDownRate=0.999485f;
-	InverseScaleDownRate=0.000515f;
-	ScaleHighThreshold=1.f;
-	ScaleMidThreshold=0.5f;
-	ScaleLowThreshold=0.1f;
-	ScaleHighModifier=0.0099f;
-	ScaleMidModifier=0.0066f;
-	ScaleLowModifier=0.0033f;
-	Stage = 0; //Every odd stage it shrinks, even stages player's get a break from it...
+	Stage=0; //Every odd stage it shrinks, even stages players get a break from it...
 	FMath::SRandInit(FPlatformTime::Cycles());
+
+	//Auto generate thresholds and modifiers with specified resolution: ex. 10.f = 10 linear scaling progression levels, etc...
+	StormAdvancement.AutoGenerateThresholds(7.f);
+
+	//3.f generates -> {0.3333f, 0.0033f}, {0.6666f, 0.0066f}, {1.f, 0.01f};
+	//StormAdvancement.AutoGenerateThresholds(3.f);
+	//4.f generates -> {0.25f, 0.0025f}, {0.5f, 0.005f}, {0.75f, 0.0075f}, {1.f, 0.01f};
+	//StormAdvancement.AutoGenerateThresholds(4.f); //etc...
+
+	//Or manual thresholds and modifiers setup #1
+	/*StormAdvancement.Add(1.f,0.0099f);
+	StormAdvancement.Add(0.5f,0.0066f);
+	StormAdvancement.Add(0.1f,0.0033f);*/
+
+	//manual thresholds and modifiers setup #2, etc
+	/*StormAdvancement.Add(1.f,0.0088f);
+	StormAdvancement.Add(0.66f,0.0044f);
+	StormAdvancement.Add(0.33f,0.0022f);
+	StormAdvancement.Add(0.1f,0.0011f);*/
 
 	IConsoleVariable *StormRestartCmd=IConsoleManager::Get().RegisterConsoleVariable(TEXT("StormRestart"),
 		2,
@@ -51,8 +62,13 @@ void AStormActor::InitializeStorm()
 		SizeScale=InitialSizeScale;
 		SetActorScale3D(InitialSizeScale);
 
-		GetWorldTimerManager().SetTimer(StormSetupTimerHandle,this,&AStormActor::AdvanceStage,StormAdvanceStageRate,true);
+		GetWorldTimerManager().SetTimer(StormStageTimerHandle,this,&AStormActor::ServerAdvanceStage,StormAdvanceStageRate,true);
 		GetWorldTimerManager().SetTimer(StormDamageTimerHandle,this,&AStormActor::ServerSetNewDamage,StormIncreaseDamageRate,true);
+
+		FString LogMsg="StormProgression=";
+		for(auto& progression : StormAdvancement.Progressions)
+			LogMsg+=FString::Printf(_T("{%.04f, %.04f}, "),progression.ScaleThreshold,progression.ScaleModifier);
+		GEngine->AddOnScreenDebugMessage(1,5.f,FColor::Yellow,LogMsg);
 	}
 }
 
@@ -61,18 +77,6 @@ void AStormActor::BeginPlay()
 {
 	Super::BeginPlay();
 	InitializeStorm();
-
-	/*FString LogMsg = FString("storm actor constructor ") + FString::FromInt(X) + FString(" ") + FString::FromInt(Y);
-	UE_LOG(LogMyGame, Warning, TEXT("%s"), *LogMsg);*/
-	//after 30 seconds, start shrinking the circle at the last 30 seconds of every 2 and a half minute interval
-	//FTimerHandle StormSetupTimerHandle;
-	//GetWorldTimerManager().SetTimer(StormSetupTimerHandle, this, &AStormActor::ServerStartStorm, 30.0f, false);
-	/*LogMsg = FString("begin play circle ") + FString::FromInt(GetNetMode());
-	UE_LOG(LogMyGame, Warning, TEXT("%s"), *LogMsg);*/
-	
-	/*FString LogMsg = FString("begin play circle ") + FString::FromInt(GetNetMode());
-	UE_LOG(LogMyGame, Warning, TEXT("%s"), *LogMsg);*/
-	//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString("Storm Begin Play ") + FString::FromInt(GetNetMode()));
 }
 
 // Called every frame
@@ -83,37 +87,10 @@ void AStormActor::Tick(float DeltaTime)
 	{
 		//With the storm's performance fixed, now scale down slower as it gets smaller (because it seems like it closes up too fast towards the end)
 		//Also incorporate the DeltaTime now too so that it scales down consistently always the same regardless of framerate...
-		//The ScaleDownRate, Scale/Low/Mid/High/Modifier can still be tweaked to find the optimal scaling down speed for players...
-		float newScaleXY=0.f;
-		if(SizeScale.X <= ScaleLowThreshold)
-			newScaleXY=(SizeScale.X - (ScaleDownRate * DeltaTime * ScaleLowModifier));
-		else if(SizeScale.X <= ScaleMidThreshold)
-			newScaleXY=(SizeScale.X - (ScaleDownRate * DeltaTime * ScaleMidModifier));
-		else if(SizeScale.X <= ScaleHighThreshold)
-			newScaleXY=(SizeScale.X - (ScaleDownRate * DeltaTime * ScaleHighModifier));
-		else if(SizeScale.X > ScaleHighThreshold)
-			newScaleXY=ScaleHighThreshold;
+		SetActorScale3D(SizeScale=StormAdvancement.AdvanceStorm(SizeScale.X,SizeScale.Z,DeltaTime));
 
-		if(SizeScale.X > 0.00000009f) //Only scale down until it's extremely tiny
-		{
-			SetActorScale3D(SizeScale=FVector(newScaleXY,newScaleXY,SizeScale.Z));
-			FString LogMsg=FString::Printf(_T("Using DeltaTime incorporated scaling: Stage=%i SizeScale.XY=%0.8f"),Stage,newScaleXY);
-			GEngine->AddOnScreenDebugMessage(1,5.f,FColor::Yellow,LogMsg);
-		}
-
-		/*float timeElapsed1=GetWorldTimerManager().GetTimerElapsed(StormSetupTimerHandle);
-		float timeRemaining1=GetWorldTimerManager().GetTimerRemaining(StormSetupTimerHandle);
-		FString timeMsg1=FString::Printf(_T("Storm Stage Advance, timer elapsed (seconds): %.02f, time remaining until next stage (seconds): %.02f"),timeElapsed1,timeRemaining1);
-		GEngine->AddOnScreenDebugMessage(2,5.f,FColor::Green,timeMsg1);
-
-		if(StormDamageTimerHandle.IsValid())
-		{
-			float timeElapsed2=GetWorldTimerManager().GetTimerElapsed(StormDamageTimerHandle);
-			float timeRemaining2=GetWorldTimerManager().GetTimerRemaining(StormDamageTimerHandle);
-			FString timeMsg2=FString::Printf(_T("Storm Damage Increase, timer elapsed (seconds): %.02f, time remaining until damage increased (seconds): %.02f"),timeElapsed2,timeRemaining2);
-			GEngine->AddOnScreenDebugMessage(3,5.f,FColor::Green,timeMsg2);
-		}
-		*/
+		FString LogMsg=FString::Printf(_T("Using DeltaTime incorporated scaling: Stage=%i SizeScale.XY=%.08f"),Stage,SizeScale.X);
+		GEngine->AddOnScreenDebugMessage(1,5.f,FColor::Green,LogMsg);
 	}
 }
 
@@ -121,25 +98,28 @@ void AStormActor::GetLifetimeReplicatedProps(TArray< FLifetimeProperty > & OutLi
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AStormActor, Damage);
+	DOREPLIFETIME(AStormActor, StormAdvanceStageRate);
+	DOREPLIFETIME(AStormActor, StormIncreaseDamageRate);
 	DOREPLIFETIME(AStormActor, IsShrinking);
 	DOREPLIFETIME(AStormActor, InitialSizeScale);
 	DOREPLIFETIME(AStormActor, InitialActorLocation);
+	DOREPLIFETIME(AStormActor, SizeScale);
 }
 
-void AStormActor::AdvanceStage_Implementation()
+void AStormActor::ServerAdvanceStage_Implementation()
 {		
 	//Advance stages until storm is down to almost nothing
 	//Usually by this point either the game has probably ended or we reinitalize the storm and start again...
-	if(SizeScale.X <= 0.0000009f)
+	if(SizeScale.X <= StormAdvancement.ExtremelyLowScale)
 		return InitializeStorm();
 	//If 1/10th the scale make this the last stage and keep shrinking until there's a winner / end of game, or the storm re-initializes due to being extremely tiny as above
 	if(SizeScale.X <= 0.1f)
 		return;
 
-	IsShrinking=((++Stage % 2) != 0) ?  true : false; //Every odd numbered stage advance the shrinking!
+	IsShrinking=(++Stage % 2); //Every odd numbered stage advance the shrinking!
 }
 
-bool AStormActor::AdvanceStage_Validate() {
+bool AStormActor::ServerAdvanceStage_Validate() {
 	return true;
 }
 
@@ -151,12 +131,10 @@ bool AStormActor::ServerSetNewDamage_Validate() {
 	return true;
 }
 
-void AStormActor::ServerStartStorm_Implementation()
-{
+void AStormActor::ServerStartStorm_Implementation() {
 	InitializeStorm();
 }
 
-bool AStormActor::ServerStartStorm_Validate()
-{
+bool AStormActor::ServerStartStorm_Validate() {
 	return true;
 }

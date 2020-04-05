@@ -520,9 +520,9 @@ void AFortniteCloneCharacter::OnOverlapBegin(UPrimitiveComponent* OverlappedComp
 							return; // can't pick up items while in build mode or if just shot rifle, shot shotgun, swung pickaxe, used healing item, or reloaded
 						}
 						//If the character is overlapping with another of it's current weapon, take the ammo from it...
+						//Bonus double ammo for re-pickups
 						if (State->EquippedWeapons.Contains(WeaponActor->WeaponType)) {
-							State->EquippedWeaponsAmmunition[WeaponActor->WeaponType]+=WeaponActor->MagazineSize;
-							//State->EquippedWeaponsClips[WeaponActor->WeaponType]+=WeaponActor->MagazineSize;
+							State->EquippedWeaponsAmmunition[WeaponActor->WeaponType]+=WeaponActor->MagazineSize*2;
 							WeaponActor->Destroy();
 							return;
 						}

@@ -16,7 +16,7 @@ public:
 	float ScaleModifier;
 
 	FStormScaleProgression() { ScaleThreshold=ScaleModifier=0.f; }
-	FStormScaleProgression(float threshold,float modifier) : ScaleThreshold(threshold),ScaleModifier(modifier) { }
+	FStormScaleProgression(const float threshold,const float modifier) : ScaleThreshold(threshold),ScaleModifier(modifier) { }
 };
 
 USTRUCT()
@@ -24,10 +24,11 @@ struct FStormAdvancement
 {
 	GENERATED_BODY()
 
-public:
+private:
 	UPROPERTY()
 	TArray<FStormScaleProgression> Progressions;
 
+public:
 	UPROPERTY()
 	float ScaleDownRate;
 
@@ -35,7 +36,7 @@ public:
 	float ExtremelyLowScale;
 
 	FStormAdvancement() { ScaleDownRate=0.999485f; ExtremelyLowScale=0.00000009f; }
-	void AutoGenerateThresholds(float Resolution)
+	void AutoGenerateThresholds(const float Resolution)
 	{
 		Empty();
 		float ScaleResolution=1.f / Resolution;
@@ -47,33 +48,31 @@ public:
 			Add(NextThreshold,NextModifier);
 		}
 	}
-	FVector AdvanceStorm(float CurrentScaleX,float CurrentScaleZ,float DeltaTime)
+	FVector AdvanceStorm(float ScaleX,const float ScaleZ,const float DeltaTime)
 	{
-		float NewScaleX=1.f;
 		for(auto& progression : Progressions)
 		{
-			if(CurrentScaleX <= progression.ScaleThreshold)
+			if(ScaleX <= progression.ScaleThreshold)
 			{
-				NewScaleX=CurrentScaleX;
-				if(CurrentScaleX > ExtremelyLowScale)
-					NewScaleX-=(ScaleDownRate * DeltaTime * progression.ScaleModifier);
-					
-				FString LogMsg=FString::Printf(_T("CurrentScaleX <= %.08f ScaleModifier=%.08f NewScaleX=%.08f"),progression.ScaleThreshold,progression.ScaleModifier,NewScaleX);
-				GEngine->AddOnScreenDebugMessage(0,5.f,FColor::Green,LogMsg);
+				ScaleX=FMath::Clamp(ScaleX-(ScaleDownRate * DeltaTime * progression.ScaleModifier),0.f,ScaleX);
 				break;
 			}
 		}
-		return FVector(NewScaleX,NewScaleX,CurrentScaleZ);
+		return FVector(ScaleX,ScaleX,ScaleZ);
 	}
-	void Add(float threshold,float modifier)
+	void OutputStormProgression()
 	{
-		auto p=FStormScaleProgression(threshold,modifier);
+		FString LogMsg;
 		for(auto& progression : Progressions)
-		{
-			if(p.ScaleThreshold==progression.ScaleThreshold)
+			LogMsg+=FString::Printf(_T("{%.04f, %.04f}, "),progression.ScaleThreshold,progression.ScaleModifier);
+		GEngine->AddOnScreenDebugMessage(1,10.f,FColor::Yellow,"StormProgression="+LogMsg);
+	}
+	void Add(const float threshold,const float modifier)
+	{
+		for(auto& progression : Progressions)
+			if(FMath::IsNearlyEqual(threshold,progression.ScaleThreshold))
 				return; //Threshold already exists, don't add it again...
-		}
-		Progressions.Emplace(p);
+		Progressions.Emplace(FStormScaleProgression(threshold,modifier));
 		Sort();
 	}
 	void Sort()
@@ -106,32 +105,32 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
-	UPROPERTY()
-	FTimerHandle StormStageTimerHandle;
-	
-	UPROPERTY()
-	FTimerHandle StormDamageTimerHandle;
-
 	UPROPERTY(Replicated)
 	float Damage;
-
-	UPROPERTY(Replicated)
-	float StormAdvanceStageRate;
-
-	UPROPERTY(Replicated)
-	float StormIncreaseDamageRate;
 
 	UPROPERTY(Replicated)
 	bool IsShrinking;
 
 	UPROPERTY(Replicated)
+	FVector SizeScale;
+
+	UPROPERTY()
 	FVector InitialSizeScale;
-	
-	UPROPERTY(Replicated)
+
+	UPROPERTY()
 	FVector InitialActorLocation;
 
-	UPROPERTY(Replicated)
-	FVector SizeScale;
+	UPROPERTY()
+	FTimerHandle StormStageTimerHandle;
+
+	UPROPERTY()
+	FTimerHandle StormDamageTimerHandle;
+
+	UPROPERTY()
+	float StormAdvanceStageRate;
+
+	UPROPERTY()
+	float StormIncreaseDamageRate;
 
 	UPROPERTY()
 	FStormAdvancement StormAdvancement;
